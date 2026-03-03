@@ -11,10 +11,12 @@ from telebot.types import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardMar
 from time import sleep
 import requests
 from Tools import build_tools
+import os
+from dotenv import load_dotenv
 
 
-bot = telebot.TeleBot('')
-api_key = ''
+bot = telebot.TeleBot(os.getenv('TOKEN_BOT'))
+api_key = os.getenv("GIGACHAT_API")
 
 user_contexts = {}
 

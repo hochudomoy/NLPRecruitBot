@@ -8,30 +8,31 @@ class InterviewerAgent:
       self.llm = GigaChat(credentials=api_key,verify_ssl_certs=False).bind_tools(tools)
       self.prompt_question = ChatPromptTemplate.from_messages([
             ("system", """Ты интервьюер на техническом собеседовании. Веди беседу с кандидатом как настоящий человек:
-                    - Задавай вопросы последовательно, строя диалог, ориентируясь на ответы кандидата и историю.
-                    - Не повторяй ранее заданные вопросы.Вопросы должны соответвовать позиции и грейду кандидата. 
-                    - Будь вежливым и дружелюбным, поддерживай естественный темп беседы.
+                    - Задавай вопросы последовательно, строя диалог, ориентируясь на ответы кандидата,историю и установленную сложность.
+                    - Не повторяй ранее заданные вопросы. Вопросы должны соответвовать позиции и грейду кандидата. 
+                    - Будь вежливым и дружелюбным, поддерживай естественный темп беседы. Если пользователь затрудняется смени тему. 
                     - При формировании вопроса учитывай советы и сигналы Observer.
                     - Не включай Observer-сообщения, размышления или пояснения в текст вопроса.
                     - Формулируй **только один вопрос** для кандидата за раз, понятный и конкретный.
                     - Старайся связывать вопросы логически: предыдущий вопрос+предыдущий ответ → следующий вопрос.
                     - Если нужно изменить состояние интервью — используй инструменты внутренне, не показывай tool_call пользователю.
-                    - ВАЖНО Если ответ кандидата:
-                            -Если номер вопроса больше 15 → end_interview(reason="Интервью заончено")
-                            -Если последние три ответа пользователя были отказом от ответа или не соответвовали вопросу->end_interview(reason="Кандидат не отвечает на вопросы") """),
-            ("human", """Позиция: {position} Грейд: {grade} Опыт: {experience} Совет Observer: {thoughts} История последних ходов: {history} Сложность вопроса:{difficulty} Сигнал Observer:{signal} Номер вопроса {id}""")
+                    - Если пользователь отказывется отвечать более 2 раз→ вызови инструмент:end_interview(reason="Пользователь не отвечает")
+                    - Обязательно если в question_count написано закончить интервью-> вызови инструмент:end_interview(reason="Конец интервью") """),
+            ("human", """Позиция: {position} Грейд: {grade} Опыт: {experience} Совет Observer: {thoughts} История последних ходов: {history} Сложность вопроса:{difficulty} Сигнал Observer:{signal} question_count:{question_count}""")
         ])
 
   def ask_question(self, context, thoughts):
+        question_count=''
+        if context['id']>15:question_count='Закончи интервью'
         messages=self.prompt_question.format_messages(
                 position=context["position"],
                 grade=context["grade"],
                 experience=context["experience"],
                 thoughts=thoughts,
-                history=context.get("history", [])[-3:],
+                history=context.get("history", [])[-5:],
                 difficulty=context['difficulty'],
                 signal=context['interviewer_signal'],
-                id=context['id'],
+                question_count=question_count,
             )
         response = invoke_with_tools(self.llm, messages,self.tools_dict)
         context['interviewer_signal']= ""
@@ -52,10 +53,10 @@ class ObserverAgent:
               Если кандидат отходит от темы посоветуй интервьеру плавно вернуть его к вопросу. Не задавай вопрос, только размышляй.
               Если нужно изменить состояние интервью — используй инструменты внутренне, не показывай tool_call пользователю.
               ВАЖНО Если:
-               -ответ  содержит ошибки фактов или отход от темы -> mark_hallucination(reason="ответ не по теме")
-               -кандидат отказывается отвечать -> send_signal_to_interviewer(message="кандидат отказывается отвечать, смени тему")
-               -Ответ слабый или неверный -> change_difficulty(level="easy")
-               -Ответ полный и верный -> change_difficulty(level="hard")"""),
+               -кандидат даёт ответ с фактологической ошибкой или уходит от темы -> mark_hallucination(reason="ответ не по теме") Не пиши как текст, вызови инструмент.
+               -кандидат отказывается отвечать -> send_signal_to_interviewer(message="кандидат отказывается отвечать, смени тему")Не пиши как текст, вызови инструмент.
+               -Ответ слабый или неверный -> change_difficulty(level="easy")Не пиши как текст, вызови инструмент.
+               -Ответ полный и верный -> change_difficulty(level="hard")Не пиши как текст, вызови инструмент."""),
             ("human", """Вопрос: {last_agent_message} Ответ кандидата: {last_user_message} История последних ходов: {history} Грейд: {grade} Сложность вопроса:{difficulty}""")
         ])
   def analyze(self, context):
