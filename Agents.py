@@ -23,6 +23,7 @@ class InterviewerAgent:
         ])
 
   def ask_question(self, context, thoughts):
+        question_count=''
         if context['id']<3:question_count='Первый вопрос'
         if context['id']>15:question_count='Закончи интервью'
         messages=self.prompt_question.format_messages(
@@ -95,4 +96,5 @@ class SummaryAgent:
                 position=context["position"],
             )
         )
+
         return response.content.strip()
