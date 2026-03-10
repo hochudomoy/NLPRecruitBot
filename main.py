@@ -13,6 +13,7 @@ import requests
 from Tools import build_tools
 import os
 from dotenv import load_dotenv
+import random
 
 load_dotenv()
 bot = telebot.TeleBot(os.getenv('TOKEN_BOT'))
@@ -77,7 +78,12 @@ def restart_state(message):
     bot.reply_to(message, "История удалена. Начнём интервью заново!")
     handle_start(message)
 
+@bot.message_handler(content_types=['photo'])
+def get_file_id(message):
+    file_id = message.photo[-1].file_id
+    print("FILE_ID:", file_id)
 
+    
 def handle_position(message):
     user_id = str(message.from_user.id)
     user_contexts[user_id]["position"] = message.text.strip()
@@ -105,8 +111,6 @@ def handle_grade(call):
     bot.send_message(user_id, "3. Перечислите ваши ключевые навыки через запятую или опишите ваш опыт работы.")
 
     bot.register_next_step_handler(call.message, handle_experience)
-
-
 
 
 def handle_experience(message):
@@ -175,6 +179,24 @@ def start_interview(user_id, context):
     bot.send_message(user_id, agent_message)
     bot.register_next_step_handler(last_message, process_answer)
 
+image_hired = [
+    "AgACAgIAAxkBAAIFQGmv7zLJM3NR7gGhN2oHf4GTSUX3AAJmGGsbxXt5SZkNGsOy2Y3CAQADAgADeQADOgQ",
+    "AgACAgIAAxkBAAIFTWmv773wfgPSd-wZ6ZmhjAtHZuNSAAJ1GGsbxXt5Se-QBOp035fyAQADAgADeQADOgQ",
+    "AgACAgIAAxkBAAIFTmmv8AABawQV1e_6RcAcawovggi5hAACexhrG8V7eUkMdpdY3hiZ2wEAAwIAA3kAAzoE"
+]
+image_not_hired = [
+    "AgACAgIAAxkBAAIFT2mv8C6r8zl09OowwzwmSLucY96pAAKBGGsbxXt5SfDQElEJF0xMAQADAgADeQADOgQ",
+    "AgACAgIAAxkBAAIFUGmv8FPRdnSgTChSN3qMK37lx6gAA4YYaxvFe3lJjhjDN-4Me7QBAAMCAAN5AAM6BA",
+    "AgACAgIAAxkBAAIFUWmv8JChIYf7Q4JNxngVf-QYQAomAAKKGGsbxXt5SUqEutlBY9prAQADAgADeQADOgQ"
+]
+
+def get_random_image(result):
+    if result=="да" or result=="Да" or result=="ДА":
+        return random.choice(image_hired)
+    else:
+        return random.choice(image_not_hired)
+
+
 def process_answer(message):
     user_id = str(message.from_user.id)
     if user_id not in user_contexts:
@@ -209,34 +231,42 @@ def process_answer(message):
     if user_message.lower() == "стоп":
         context["finished"] = True
         final_summary = summary_agent.summarize(context)
-        bot.send_message(user_id, final_summary)
+
+        try:
+            image_id = get_random_image(context["hire"])
+            bot.send_photo(user_id, image_id)
+            bot.send_message(user_id, final_summary)
+        except Exception as e:
+            print("Ошибка отправки фото:", e)
+            bot.send_message(user_id, final_summary)
+
         del user_contexts[user_id]
         return
-
-
 
     if context.get("finished"):
         final_summary = summary_agent.summarize(context)
         logger.set_final_feedback(final_summary)
         logger.save_to_file()
-        bot.send_message(user_id, final_summary)
+        try:
+            image_id = get_random_image(context["hire"])
+            bot.send_photo(user_id, image_id)
+            bot.send_message(user_id, final_summary)
+        except Exception as e:
+            print("Ошибка отправки фото:", e)
+            bot.send_message(user_id, final_summary)
+
         del user_contexts[user_id]
         return
 
     next_agent_message = interviewer.ask_question(context, internal_combined)
-
-
     bot.send_message(user_id, next_agent_message)
     context["last_agent_message"] = next_agent_message
     bot.register_next_step_handler(message, process_answer)
 
 
 if __name__ == "__main__":
-    #bot.polling(non_stop=True)
-
     print("Запуск")
     try:
         bot.infinity_polling(timeout=60, long_polling_timeout=60)
     except Exception as e:
         print(f"Произошла ошибка: {e}")
-
